@@ -1,0 +1,8 @@
+build/
+.gradle/
+run/
+.idea/
+out/
+libs/*.jar
+DEV-NOTES.md
+*.asv

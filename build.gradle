@@ -1,0 +1,50 @@
+plugins {
+    id "architectury-plugin" version "3.4-SNAPSHOT"
+    id "dev.architectury.loom" version "1.7-SNAPSHOT"
+}
+
+architectury {
+    minecraft = project.minecraft_version
+    platformSetupLoomIde()
+    neoForge()
+}
+
+loom {
+    silentMojangMappingsLicense()
+}
+
+repositories {
+    maven { url "https://maven.neoforged.net/releases/" }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    neoForge "net.neoforged:neoforge:${project.neoforge_version}"
+
+    def libs = files("libs/reterraforged-0.0.6.jar", "libs/streamsreflowing-1.21.1-neoforge-2.10.7.jar")
+    compileOnly libs
+    runtimeOnly libs
+}
+
+version = project.mod_version
+
+processResources {
+    inputs.property "version", version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+// NeoForge dev runneeds the built mod JAR on the classpath, not exploded output
+tasks.named("runServer") {
+    doFirst {
+        def jarFile = tasks.named("jar").get().archiveFile.get().asFile
+        classpath = classpath.filter { it.isFile() && !it.name.contains("-dev.jar") && !it.path.contains("devlibs") }.plus(files(jarFile))
+    }
+}

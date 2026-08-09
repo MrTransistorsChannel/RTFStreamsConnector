@@ -1,0 +1,41 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mixins]]
+config = "rtfstreamsconnector.mixins.json"
+
+[[mods]]
+modId = "rtfstreamsconnector"
+version = "${version}"
+displayName = "ReTerraForged Streams Connector"
+authors = "MrTransistor"
+description = '''Makes Streams Reflowing recognise ReTerraForged river valleys so its flow directions stay consistent across forks and flat valley floors.'''
+
+[[dependencies.rtfstreamsconnector]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.rtfstreamsconnector]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.rtfstreamsconnector]]
+modId = "reterraforged"
+type = "required"
+versionRange = "[0.0.6,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.rtfstreamsconnector]]
+modId = "streamsreflowing"
+type = "required"
+versionRange = "[2.10.7,)"
+ordering = "NONE"
+side = "BOTH"
