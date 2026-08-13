@@ -75,8 +75,7 @@ fprintf('done\n');
 figure('Name', sprintf('carver riverMask - REAL simplex (valley=%d)', USE_VALLEY), 'Color','w');
 imagesc(xr, zr, mask);
 set(gca,'YDir','reverse'); axis equal tight; grid on;
-CM = turbo(256); CM(1:64,:) = 0.35 + 0.65*CM(1:64,:);
-colormap(CM); caxis([0 1]); colorbar;
+colormap(turbo); caxis([0 1]); colorbar;
 hold on;
 
 %% ============== FLOW-DIRECTION QUIVER OVERLAY ============
@@ -90,7 +89,8 @@ hold on;
 %     color    : optional quiver color (default 'k')
 % EXAMPLES:
 probeFlow(networks, 16, @flowGradientNormal, 'g');       % gradient-normal (raw angle, no end-blend/bank)
-probeFlow(networks, 16, @flowWiggleOnlyTangent, 'b');    % NOISE-FREE wiggle tangent (test: can it fold?)
+probeFlow(networks, 16, @flowSideGradient, 'b');          % side-based sign
+probeFlow(networks, 16, @flowSignedDistGradient, 'm');    % gradient of SIGNED distance, rotate 90
 
 %% ============== QUICK FLIP-CAUSE CHECK (temporary) ============
 % At the two sharp-wiggle regions, is the raw gradient-perpendicular rotated
@@ -402,37 +402,106 @@ function d2 = treeShiftedDist(n, best, x, z)
     end
 end
 
-function [dx, dz] = flowWiggleOnlyTangent(networks, x, z)
-    % EXAMPLE flow function #4 (noise-free TEST): tangent of the warped centerline
-    % with the NOISE term REMOVED (N0 = 0, a = 0) — the user's original sine-wave
-    % derivation, old DEV-NOTES: w(t) = -wD*R*sin(2*pi*t*wF + atan2(nx^2, nz^2)),
-    % R = sqrt(nx^4+nz^4). Tests whether the NOISE is what makes the curve
-    % multi-valued in t (gradient rotating >90 deg): the pure wiggle alone should
-    % never fold (T = L*u + w'*n, w' bounded by wD*2*pi*wF < L).
-    % RAW output: NO dot flip — the flip firing would be visible as arrows
-    % pointing >90 deg off the axis. NaN outside the bank band.
+function [dx, dz] = flowSideGradient(networks, x, z)
+    % Gradient of the SHIFTED squared distance (same field as flowGradientNormal),
+    % but the perpendicular's SIGN is chosen by the SIGNED lateral distance of the
+    % warped point onto the river normal — which side of the straight axis it is
+    % on — instead of the axis dot<0 flip. PREDICTION: equivalent to the axis flip
+    % away from folds, but BOTH snap at the two wiggle regions (the snap is the
+    % field's medial axis, structural — sign(w) does not flip there), so this and
+    % the gradient method should overlap almost everywhere; the test confirms it.
     [n, d2, tw] = nearestNetwork(networks, x, z);
     if isempty(n) || d2 > scaledSize2(tw, n, n.banksWidth^2, 1.25^2)
         dx = NaN; dz = NaN; return;
     end
     rv = n.river;
-    t = tw;
-    L = rv.length;
-    factor = L * 4e-4;
-    wF = 8 * factor;                       % wiggle freq (NO freqMul in real code)
-    nx = rv.normX; nz = rv.normZ;
-    R = sqrt(nx^4 + nz^4);
-    theta = 2*pi*wF*t + atan2(nx^2, nz^2);
-    alpha2 = min(max(t / 0.075, 0), 1);
-    raw = alpha2 * 25 * factor;
-    wD = min(max(raw, 2), 45);             % wiggle dist clamp(2..45)
-    wDp = 0;
-    if t < 0.075 && raw > 2 && raw < 45    % wD ramp slope (flat at clamps)
-        wDp = 25 * factor / 0.075;
+    h = 1.0;
+    gx = (shiftedDistSqFull(networks, n, x+h, z) - shiftedDistSqFull(networks, n, x-h, z)) / (2.0*h);
+    gz = (shiftedDistSqFull(networks, n, x, z+h) - shiftedDistSqFull(networks, n, x, z-h)) / (2.0*h);
+    mag = sqrt(gx*gx + gz*gz);
+    if mag <= 1.0e-5
+        dx = rv.ndx; dz = rv.ndz; return;             % dead zone -> axis dir
     end
-    wP = -wDp*R*sin(theta) - wD*R*cos(theta)*(2*pi*wF);   % w'(t)
-    dx = rv.dx + wP * nx;                  % T = L*u + w'*n
-    dz = rv.dz + wP * nz;
+    % Warped (shifted) point and its signed lateral distance on the river normal.
+    [xw, zw, tw] = shiftedPointFull(networks, n, x, z);
+    w = (xw - (rv.x1 + tw*rv.dx))*rv.normX + (zw - (rv.z1 + tw*rv.dz))*rv.normZ;
+    s = sign(w);  if s == 0, s = 1; end               % on-axis: pick one
+    dx =  s * (-gz/mag);                               % = -sign(w) * f_raw
+    dz =  s * (gx/mag);
+end
+
+function [xw, zw, tw] = shiftedPointFull(networks, best, x, z)
+    % Fold (x,z) through the ancestor chain of `best` (the fold STACK), then apply
+    % best's own warp — returning the shifted point and its section t. Mirrors
+    % treeShiftedDist exactly but returns the point instead of getDistSq.
+    for i = 1:numel(networks)
+        [found, xw, zw, tw] = foldToPoint(networks(i), best, x, z);
+        if found, return; end
+    end
+    rv = best.river;                                   % fallback (shouldn't occur)
+    tw = distanceOnLine(x, z, rv); xw = x; zw = z;
+end
+
+function [found, xw, zw, tw] = foldToPoint(n, best, x, z)
+    if isequal(n, best)
+        rv = n.river; wp = n.warp;
+        t = distanceOnLine(x, z, rv);
+        xw = x; zw = z;
+        if t >= 0 && t <= 1
+            [dx, dz] = shiftAt(rv, wp, x, z);
+            xw = x + dx; zw = z + dz;
+            t = distanceOnLine(xw, zw, rv);
+        end
+        tw = t; found = true; return;
+    end
+    t = distanceOnLine(x, z, n.river);
+    xw = x; zw = z;
+    if t >= 0 && t <= 1
+        [dx, dz] = shiftAt(n.river, n.warp, x, z);
+        xw = x + dx; zw = z + dz;
+    end
+    found = false;
+    for c = 1:numel(n.children)
+        if isempty(n.children(c).river), continue; end
+        [found, xw, zw, tw] = foldToPoint(n.children(c), best, xw, zw);
+        if found, return; end
+    end
+end
+
+function [dx, dz] = flowSignedDistGradient(networks, x, z)
+    % Gradient of the SIGNED lateral distance (not squared), rotated 90 deg. The
+    % signed-distance field w(x,z) is single-valued and its gradient points toward
+    % increasing w (the +n^ side) on BOTH banks — unlike d2=w^2 whose gradient
+    % flips with sign(w). So perp(∇w) should be a consistent direction everywhere
+    % (no per-point sign selection). Test: is it continuous at the folds, and does
+    % the rotation give downstream (else one global flip)? 4 signed-distance probes
+    % through the fold chain (reuses shiftedPointFull), then rotate 90.
+    [n, d2, tw] = nearestNetwork(networks, x, z);
+    if isempty(n) || d2 > scaledSize2(tw, n, n.banksWidth^2, 1.25^2)
+        dx = NaN; dz = NaN; return;
+    end
+    rv = n.river;
+    h = 1.0;
+    wR = signedLatDist(networks, n, x + h, z);
+    wL = signedLatDist(networks, n, x - h, z);
+    wU = signedLatDist(networks, n, x, z + h);
+    wD = signedLatDist(networks, n, x, z - h);
+    gx = (wR - wL) / (2.0*h);
+    gz = (wU - wD) / (2.0*h);
+    mag = sqrt(gx*gx + gz*gz);
+    if mag <= 1.0e-5
+        dx = rv.ndx; dz = rv.ndz; return;             % dead zone -> axis dir
+    end
+    dx = -gz / mag;                                   % perp(∇w); sign TBD (flip if upstream)
+    dz =  gx / mag;
+end
+
+function w = signedLatDist(networks, best, x, z)
+    % Signed lateral distance of the warped point onto the river normal: fold (x,z)
+    % through best's ancestor chain + own warp, then project the offset onto n^.
+    [xw, zw, tw] = shiftedPointFull(networks, best, x, z);
+    rv = best.river;
+    w = (xw - (rv.x1 + tw*rv.dx))*rv.normX + (zw - (rv.z1 + tw*rv.dz))*rv.normZ;
 end
 
 function [n, d2, tw] = nearestNetwork(networks, x, z)
