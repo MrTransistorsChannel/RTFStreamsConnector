@@ -10,15 +10,13 @@ import java.lang.invoke.VarHandle;
 
 public final class RiverCarverReflection {
     private static final VarHandle fade = PrivateFieldReflector.varHandle(RiverCarver.class, "fade", float.class);
-    private static final VarHandle bedWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "bedWidth",
-        Range.class);
-    private static final VarHandle banksWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "banksWidth",
-        Range.class);
-    private static final VarHandle valleyWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "valleyWidth",
-        Range.class);
-    private static final MethodHandle scaledSize = PrivateFieldReflector.methodHandle(RiverCarver.class,
-        "getScaledSize", MethodType.methodType(float.class, float.class, Range.class)
-    );
+    private static final VarHandle bedWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "bedWidth", Range.class);
+    private static final VarHandle banksWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "banksWidth", Range.class);
+    private static final VarHandle valleyWidth = PrivateFieldReflector.varHandle(RiverCarver.class, "valleyWidth", Range.class);
+    private static final MethodHandle scaledSize = PrivateFieldReflector.methodHandle(RiverCarver.class, "getScaledSize", MethodType.methodType(float.class,
+        float.class, Range.class));
+
+    private RiverCarverReflection() {}
 
     public static float fadeOf(RiverCarver carver) {
         return (float) fade.get(carver);

@@ -25,23 +25,10 @@ import rtfstreamsconnector.util.RTFHelpers;
 
 public final class DumpRiverNetworkCommand {
 
-    private DumpRiverNetworkCommand() {
-    }
+    private DumpRiverNetworkCommand() {}
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("rtfconnector")
-            .requires(source -> source.hasPermission(2))
-            .then(Commands.literal("dumpnetwork")
-                .executes(DumpRiverNetworkCommand::executeDumpNetworkHere)
-                .then(Commands.literal("here")
-                    .executes(DumpRiverNetworkCommand::executeDumpNetworkHere)
-                    .then(Commands.literal("recursive")
-                        .executes(DumpRiverNetworkCommand::executeDumpNetworkHereRecursively)))
-                .then(Commands.argument("x", IntegerArgumentType.integer())
-                    .then(Commands.argument("z", IntegerArgumentType.integer())
-                        .executes(DumpRiverNetworkCommand::executeDumpNetwork)
-                        .then(Commands.literal("recursive")
-                            .executes(DumpRiverNetworkCommand::executeDumpNetworkRecursively))))));
+        dispatcher.register(Commands.literal("rtfconnector").requires(source -> source.hasPermission(2)).then(Commands.literal("dumpnetwork").executes(DumpRiverNetworkCommand::executeDumpNetworkHere).then(Commands.literal("here").executes(DumpRiverNetworkCommand::executeDumpNetworkHere).then(Commands.literal("recursive").executes(DumpRiverNetworkCommand::executeDumpNetworkHereRecursively))).then(Commands.argument("x", IntegerArgumentType.integer()).then(Commands.argument("z", IntegerArgumentType.integer()).executes(DumpRiverNetworkCommand::executeDumpNetwork).then(Commands.literal("recursive").executes(DumpRiverNetworkCommand::executeDumpNetworkRecursively))))));
     }
 
     // Dumps the important information about the nearest river network
@@ -56,14 +43,12 @@ public final class DumpRiverNetworkCommand {
 
         if (rootNetworks == null)
             return Component.literal("River network fetching failed! Check server logs for more information.").withStyle(ChatFormatting.RED);
-        if (rootNetworks.length == 0)
-            return Component.literal("No river networks found in this region!").withStyle(ChatFormatting.RED);
+        if (rootNetworks.length == 0) return Component.literal("No river networks found in this region!").withStyle(ChatFormatting.RED);
 
         MutableComponent msg = Component.literal("Main rivers in this region:\n");
 
         for (int i = 0; i < rootNetworks.length; i++) {
-            if (recursive)
-                msg.append(dumpRiversRecursively(rootNetworks[i], i == rootNetworks.length - 1, ""));
+            if (recursive) msg.append(dumpRiversRecursively(rootNetworks[i], i == rootNetworks.length - 1, ""));
             else msg.append(riverInfo(rootNetworks[i], i == rootNetworks.length - 1, ""));
         }
 
@@ -105,8 +90,7 @@ public final class DumpRiverNetworkCommand {
     private static MutableComponent dumpRiversRecursively(Network network, boolean lastChild, String prefix) {
         MutableComponent msg = riverInfo(network, lastChild, prefix);
         for (int i = 0; i < network.children().length; i++) {
-            msg.append(dumpRiversRecursively(network.children()[i], i == network.children().length - 1,
-                prefix + (lastChild ? "  " : "│ ")));
+            msg.append(dumpRiversRecursively(network.children()[i], i == network.children().length - 1, prefix + (lastChild ? "  " : "│ ")));
         }
         return msg;
     }
@@ -130,32 +114,21 @@ public final class DumpRiverNetworkCommand {
         // Warp settings block
         msg.append(Component.literal(prefix + continuation + "\n"));
         msg.append(Component.literal(prefix + continuation + "Warp settings:\n"));
-        msg.append(Component.literal(prefix + continuation + "    Seed: " + RiverWarpReflection.seedOf(riverWarp) +
-            "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Scale: " + RiverWarpReflection.scaleOf(riverWarp) +
-            "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Frequency: " + RiverWarpReflection.frequencyOf
-            (riverWarp) + "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Lower alpha boundary: " + RiverWarpReflection
-            .lowerOf(riverWarp) + "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Upper alpha boundary: " + RiverWarpReflection
-            .upperOf(riverWarp) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Seed: " + RiverWarpReflection.seedOf(riverWarp) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Scale: " + RiverWarpReflection.scaleOf(riverWarp) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Frequency: " + RiverWarpReflection.frequencyOf(riverWarp) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Lower alpha boundary: " + RiverWarpReflection.lowerOf(riverWarp) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Upper alpha boundary: " + RiverWarpReflection.upperOf(riverWarp) + "\n"));
 
         // Carver settings block
         msg.append(Component.literal(prefix + continuation + "\n"));
         msg.append(Component.literal(prefix + continuation + "Carver settings:\n"));
-        msg.append(Component.literal(prefix + continuation + "    Fade: " + RiverCarverReflection.fadeOf(carver) +
-            "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Bed Width: " + Math.sqrt(RiverCarverReflection
-            .bedWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.bedWidth(carver).max()) + "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Banks Width: " + Math.sqrt(RiverCarverReflection
-            .banksWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.banksWidth(carver).max()) + "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Valley Width: " + Math.sqrt(RiverCarverReflection
-            .valleyWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.valleyWidth(carver).max()) + "\n"));
-        msg.append(Component.literal(prefix + continuation + "    Valley S-Curve coeffs: L=" + PrivateFieldReflector
-            .accessor(carver.valleyCurve, "lower") + ", U=" + PrivateFieldReflector.accessor(carver.valleyCurve,
-            "upper")
-            + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Fade: " + RiverCarverReflection.fadeOf(carver) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Bed Width: " + Math.sqrt(RiverCarverReflection.bedWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.bedWidth(carver).max()) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Banks Width: " + Math.sqrt(RiverCarverReflection.banksWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.banksWidth(carver).max()) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Valley Width: " + Math.sqrt(RiverCarverReflection.valleyWidth(carver).min()) + " to " + Math.sqrt(RiverCarverReflection.valleyWidth(carver).max()) + "\n"));
+        msg.append(Component.literal(prefix + continuation + "    Valley S-Curve coeffs: L=" + PrivateFieldReflector.accessor(carver.valleyCurve, "lower") +
+            ", U=" + PrivateFieldReflector.accessor(carver.valleyCurve, "upper") + "\n"));
         msg.append(Component.literal(prefix + continuation + "\n"));
         return msg;
     }

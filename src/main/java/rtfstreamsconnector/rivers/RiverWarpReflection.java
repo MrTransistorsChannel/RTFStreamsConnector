@@ -12,8 +12,7 @@ public final class RiverWarpReflection {
     private static final VarHandle lower = PrivateFieldReflector.varHandle(RiverWarp.class, "lower", float.class);
     private static final VarHandle upper = PrivateFieldReflector.varHandle(RiverWarp.class, "upper", float.class);
 
-    private RiverWarpReflection() {
-    }
+    private RiverWarpReflection() {}
 
     public static int seedOf(RiverWarp riverWarp) {
         return (int) seed.get(riverWarp);
