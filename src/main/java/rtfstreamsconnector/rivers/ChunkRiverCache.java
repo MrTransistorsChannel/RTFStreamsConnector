@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ChunkRiverCache {
     private static final ConcurrentHashMap<ServerLevel, Cache> CACHES = new ConcurrentHashMap<>();
@@ -31,7 +32,10 @@ public class ChunkRiverCache {
     // Queries the vertex probe cache and deduplicates vertex candidates
     public static CacheEntry getCandidatesForChunk(ServerLevel level, int cx, int cz) {
         Cache cache = CACHES.computeIfAbsent(level, l -> new Cache());
+        // Stats: the flag is set inside computeIfAbsent only when the entry was missing
+        boolean[] chunkMissed = new boolean[1];
         CacheEntry entry = cache.CHUNK_CACHE.computeIfAbsent(PosUtil.pack(cx, cz), packedChunkPos -> {
+            chunkMissed[0] = true;
             cache.CHUNK_QUEUE.add(packedChunkPos);
 
             int chunkX = PosUtil.unpackLeft(packedChunkPos);
@@ -44,10 +48,13 @@ public class ChunkRiverCache {
                 for (int vz = chunkZ; vz <= chunkZ + 1; vz++) {
                     int vertexChunkX = vx;
                     int vertexChunkZ = vz;
+                    boolean[] vertexMissed = new boolean[1];
                     CacheEntry vertexEntry = cache.VERTEX_CACHE.computeIfAbsent(PosUtil.pack(vertexChunkX, vertexChunkZ), packedVertexPos -> {
+                        vertexMissed[0] = true;
                         cache.VERTEX_QUEUE.add(packedVertexPos);
                         return findVertexCandidates(level, vertexChunkX, vertexChunkZ);
                     });
+                    if (vertexMissed[0]) cache.vertexMisses.incrementAndGet(); else cache.vertexHits.incrementAndGet();
                     candidateSet.addAll(vertexEntry.candidates);
                 }
             }
@@ -56,8 +63,9 @@ public class ChunkRiverCache {
             chunkEntry.candidates.addAll(candidateSet);
             return chunkEntry;
         });
-        evictLRU(cache.CHUNK_CACHE, cache.CHUNK_QUEUE);
-        evictLRU(cache.VERTEX_CACHE, cache.VERTEX_QUEUE);
+        if (chunkMissed[0]) cache.chunkMisses.incrementAndGet(); else cache.chunkHits.incrementAndGet();
+        evictLRU(cache.CHUNK_CACHE, cache.CHUNK_QUEUE, cache.chunkEvictions);
+        evictLRU(cache.VERTEX_CACHE, cache.VERTEX_QUEUE, cache.vertexEvictions);
         return entry;
     }
 
@@ -140,12 +148,59 @@ public class ChunkRiverCache {
         }
     }
 
-    private static void evictLRU(ConcurrentHashMap<Long, ?> entries, ConcurrentLinkedQueue<Long> queue) {
+    private static void evictLRU(ConcurrentHashMap<Long, ?> entries, ConcurrentLinkedQueue<Long> queue, AtomicLong evictedCounter) {
         while (entries.size() > CACHE_MAX_SIZE) {
             Long evicted = queue.poll();
             if (evicted == null) break;
-            entries.remove(evicted);
+            if (entries.remove(evicted) != null) evictedCounter.incrementAndGet();
         }
+    }
+
+    // Snapshot of the per-level cache counters and sizes (for /rtfconnector cachestats)
+    public static final class CacheStats {
+        public final long vertexSize, vertexQueued, vertexCandidates, vertexHits, vertexMisses, vertexEvictions;
+        public final long chunkSize, chunkQueued, chunkCandidates, chunkHits, chunkMisses, chunkEvictions;
+
+        private CacheStats(Cache cache) {
+            this.vertexSize = cache.VERTEX_CACHE.size();
+            this.vertexQueued = cache.VERTEX_QUEUE.size();
+            this.vertexHits = cache.vertexHits.get();
+            this.vertexMisses = cache.vertexMisses.get();
+            this.vertexEvictions = cache.vertexEvictions.get();
+            long vc = 0;
+            for (CacheEntry e : cache.VERTEX_CACHE.values()) vc += e.candidates.size();
+            this.vertexCandidates = vc;
+
+            this.chunkSize = cache.CHUNK_CACHE.size();
+            this.chunkQueued = cache.CHUNK_QUEUE.size();
+            this.chunkHits = cache.chunkHits.get();
+            this.chunkMisses = cache.chunkMisses.get();
+            this.chunkEvictions = cache.chunkEvictions.get();
+            long cc = 0;
+            for (CacheEntry e : cache.CHUNK_CACHE.values()) cc += e.candidates.size();
+            this.chunkCandidates = cc;
+        }
+    }
+
+    public static CacheStats getCacheStats(ServerLevel level) {
+        Cache cache = CACHES.get(level);
+        if (cache == null) return null;
+        return new CacheStats(cache);
+    }
+
+    public static void resetCacheStats(ServerLevel level) {
+        Cache cache = CACHES.get(level);
+        if (cache == null) return;
+        cache.vertexHits.set(0);
+        cache.vertexMisses.set(0);
+        cache.vertexEvictions.set(0);
+        cache.chunkHits.set(0);
+        cache.chunkMisses.set(0);
+        cache.chunkEvictions.set(0);
+    }
+
+    public static int trackedLevels() {
+        return CACHES.size();
     }
 
     // Per-level cache object
@@ -154,6 +209,14 @@ public class ChunkRiverCache {
         private final ConcurrentLinkedQueue<Long> VERTEX_QUEUE = new ConcurrentLinkedQueue<>();
         private final ConcurrentHashMap<Long, CacheEntry> CHUNK_CACHE = new ConcurrentHashMap<>();
         private final ConcurrentLinkedQueue<Long> CHUNK_QUEUE = new ConcurrentLinkedQueue<>();
+
+        // Stats counters for /rtfconnector cachestats
+        final AtomicLong vertexHits = new AtomicLong();
+        final AtomicLong vertexMisses = new AtomicLong();
+        final AtomicLong vertexEvictions = new AtomicLong();
+        final AtomicLong chunkHits = new AtomicLong();
+        final AtomicLong chunkMisses = new AtomicLong();
+        final AtomicLong chunkEvictions = new AtomicLong();
     }
 
     // Cache entry object

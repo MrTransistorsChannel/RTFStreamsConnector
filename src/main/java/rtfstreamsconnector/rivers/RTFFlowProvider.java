@@ -113,8 +113,8 @@ public class RTFFlowProvider {
     // cached value belongs to the same river, otherwise recomputed by folding the candidate chain.
     private static float getDistanceToCandidate(ServerLevel level, int x, int z, ChunkRiverCache.RiverCandidateInfo info) {
         Network network = info.riverChain[info.riverChainLength - 1];
-        RiverDistanceCache.CacheEntry cached = RiverDistanceCache.get(level, x, z);
-        if (cached != null && cached.riverHash == RTFHelpers.riverHashOf(network)) {
+        RiverDistanceCache.CacheEntry cached = RiverDistanceCache.get(level, x, z, RTFHelpers.riverHashOf(network));
+        if (cached != null) {
             return cached.distance;
         }
 

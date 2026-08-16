@@ -5,6 +5,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import rtfstreamsconnector.commands.CacheStatsCommand;
 import rtfstreamsconnector.commands.DumpRiverNetworkCommand;
 import rtfstreamsconnector.commands.DumpRiversFileCommand;
 import rtfstreamsconnector.commands.ProbeCommand;
@@ -21,6 +22,7 @@ public final class ServerEvents {
         DumpRiverNetworkCommand.register(e.getDispatcher());
         DumpRiversFileCommand.register(e.getDispatcher());
         ProbeCommand.register(e.getDispatcher());
+        CacheStatsCommand.register(e.getDispatcher());
     }
 
     @SubscribeEvent
