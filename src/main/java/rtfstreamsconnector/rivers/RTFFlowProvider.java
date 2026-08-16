@@ -35,10 +35,15 @@ public class RTFFlowProvider {
         mouthModifier *= mouthModifier;
 
         // Find the closest (by clamped squared distance) river of this chunk's candidates
+        // Also precompute (1-d2/banksWidth2)^2 scales for mixing
         ChunkRiverCache.RiverCandidateInfo winner = null;
         float bestW = 0;
         float bestD2 = Float.MAX_VALUE;
-        for (ChunkRiverCache.RiverCandidateInfo info : cacheEntry.candidates) {
+
+        float[] scales = new float[cacheEntry.candidates.size()];
+        for (int i = 0; i < cacheEntry.candidates.size(); i++) {
+            ChunkRiverCache.RiverCandidateInfo info = cacheEntry.candidates.get(i);
+
             long packedXZ = foldWarpChain(info, x, z);
             float foldedX = PosUtil.unpackLeftf(packedXZ);
             float foldedZ = PosUtil.unpackRightf(packedXZ);
@@ -56,35 +61,47 @@ public class RTFFlowProvider {
             // because chunk candidates are selected by the maximum river width
             float scaledBW = RiverCarverReflection.scaledSizeOf(carver, l / river.length, RiverCarverReflection.banksWidth(network.riverCarver()));
             float banksWidth2 = Math.min(scaledBW / mouthModifier, RiverCarverReflection.valleyWidth(carver).max());
-            if (d2 <= banksWidth2 && d2 < bestD2) {
-                winner = info;
-                bestW = w;
-                bestD2 = d2;
+            if (d2 <= banksWidth2) {
+                float s = 1.f - d2 / banksWidth2;
+                scales[i] = s * s;
+                if (d2 < bestD2) {
+                    winner = info;
+                    bestW = w;
+                    bestD2 = d2;
+                }
+            }
+        }
+        // If no river band covers this block, skip it
+        if (winner == null) return Double.NaN;
+
+        // Cache the current block's distance and river
+        Network bestNetwork = winner.riverChain[winner.riverChainLength - 1];
+        RiverDistanceCache.put(level, x, z, bestNetwork, bestW);
+
+        // Re-run through all candidates, building the mixed flow direction
+        float dirX = 0;
+        float dirZ = 0;
+        for (int i = 0; i < cacheEntry.candidates.size(); i++) {
+            ChunkRiverCache.RiverCandidateInfo info = cacheEntry.candidates.get(i);
+            Network network = info.riverChain[info.riverChainLength - 1];
+            River river = network.riverCarver().river;
+            // Calculate the partial derivatives from the neighbors
+            float gx = (getDistanceToCandidate(level, x + 1, z, info) - getDistanceToCandidate(level, x - 1, z, info)) / 2.f;
+            float gz = (getDistanceToCandidate(level, x, z + 1, info) - getDistanceToCandidate(level, x, z - 1, info)) / 2.f;
+
+            // Fall back to the axis direction if the gradient is zero
+            // TODO: test if this can actually happen, shouldn't be possible since the field is monotonic (maybe under extreme warp it is still possible)
+            float mag = NoiseUtil.sqrt(gx * gx + gz * gz);
+            if (mag > 1e-5f) {
+                dirX += -scales[i] * gz;
+                dirZ += scales[i] * gx;
+            } else {
+                dirX += scales[i] * river.ndx;
+                dirZ += scales[i] * river.ndz;
             }
         }
 
-        // If no river band covers this block, skip it
-        if (winner == null) {
-            return Double.NaN;
-        }
-
-        Network bestNetwork = winner.riverChain[winner.riverChainLength - 1];
-
-        // Cache the current block's distance and river
-        RiverDistanceCache.put(level, x, z, bestNetwork, bestW);
-        // Calculate the partial derivatives from the neighbors
-        float gx = (getDistanceToCandidate(level, x + 1, z, winner) - getDistanceToCandidate(level, x - 1, z, winner)) / 2.f;
-        float gz = (getDistanceToCandidate(level, x, z + 1, winner) - getDistanceToCandidate(level, x, z - 1, winner)) / 2.f;
-
-        // Fall back to the axis direction if the gradient is zero
-        // TODO: test if this can actually happen, shouldn't be possible since the field is monotonic (maybe under extreme warp it is still possible)
-        float mag = NoiseUtil.sqrt(gx * gx + gz * gz);
-        if (mag < 1e-5f) {
-            River river = bestNetwork.riverCarver().river;
-            return Math.atan2(river.ndz, river.ndx);
-        }
-
-        return Math.atan2(gx, -gz);
+        return Math.atan2(dirZ, dirX);
     }
 
     // Wrap the biome classifier to link it to a ServerLevel

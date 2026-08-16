@@ -6,6 +6,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import rtfstreamsconnector.commands.DumpRiverNetworkCommand;
+import rtfstreamsconnector.commands.DumpRiversFileCommand;
 import rtfstreamsconnector.commands.ProbeCommand;
 import rtfstreamsconnector.rivers.ChunkRiverCache;
 import rtfstreamsconnector.rivers.RiverDistanceCache;
@@ -18,6 +19,7 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent e) {
         DumpRiverNetworkCommand.register(e.getDispatcher());
+        DumpRiversFileCommand.register(e.getDispatcher());
         ProbeCommand.register(e.getDispatcher());
     }
 

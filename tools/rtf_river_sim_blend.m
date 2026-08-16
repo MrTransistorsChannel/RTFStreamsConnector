@@ -4,6 +4,8 @@
 % rtf_river_sim_blend.m      - FULL COPY + the BLEND variant (A3, weighted
 %                              average over all covering candidates); both
 %                              flow functions kept there for comparison.
+% THIS FILE = BLEND VARIANT: the main probe uses flowConnectorBlend ('r'); the
+% winner flow function is kept in the file too, so one file can compare both.
 clear; close
 
 %% Rivers from the game (JSON dump if present, hard-coded fallback otherwise)
@@ -64,7 +66,7 @@ hold on;
 % probeFlow(networks, 16, @flowGradientNormal, 'g');       % gradient-normal (raw angle, no end-blend/bank)
 % probeFlow(networks, 16, @flowSideGradient, 'b');          % side-based sign
 % probeFlow(networks, 16, @flowSignedDistGradient, 'm');    % gradient of SIGNED distance, rotate 90
-probeFlowChunked(networks, 16, @flowConnectorWinner, 'k', 20, 1.0);
+probeFlowChunked(networks, 16, @flowConnectorBlend, 'r', 20, 1.0);
 
 %% ============== QUICK FLIP-CAUSE CHECK (temporary) ============
 % At the two sharp-wiggle regions, is the raw gradient-perpendicular rotated
@@ -98,18 +100,20 @@ for ri = 1:size(CHECK_REGIONS, 1)
 end
 
 %% ============== CONNECTOR SANITY CHECK (temporary, prints to stdout) ============
-% flowConnectorWinner at a few known regions (the blend file adds
-% flowConnectorBlend lines). River paths are WARPED away from the straight
-% axis, so path points are found by sweeping a normal strip across each section
-% (the best covered point is ON the path); the junction grid shows the
-% main<->child winner cross-over. Expected: 'main*' sweeps won by the main
-% (leaf x1=3030), 'child s=0.5' by the child (leaf x1=4734.8), far -> NO RIVER.
+% flowConnectorWinner AND flowConnectorBlend at a few known regions. River
+% paths are WARPED away from the straight axis, so path points are found by
+% sweeping a normal strip across each section (the best covered point is ON the
+% path); the junction grid shows the main<->child winner cross-over. Expected:
+% 'main*' sweeps won by the main (leaf x1=3030), 'child s=0.5' by the child
+% (leaf x1=4734.8), far -> NO RIVER; blend == winner where one band covers,
+% differs from the winner at the junction grid.
 checkCache = containers.Map('KeyType', 'double', 'ValueType', 'any');
 % (a) fork junction: blocks around the child's confluence with the main
 jungrid = [1552, -4340; 1556, -4342; 1550, -4338; 1558, -4336];
 for i = 1:size(jungrid, 1)
     x = jungrid(i, 1); z = jungrid(i, 2);
     [dx, dz] = flowConnectorWinner(networks, x, z, 1.0, checkCache);
+    [bx, bz] = flowConnectorBlend(networks, x, z, 1.0, checkCache);
     if isnan(dx) || isnan(dz)
         fprintf('CHECK | junction (%5d,%5d) | NO RIVER\n', x, z);
         continue;
@@ -128,6 +132,12 @@ for i = 1:size(jungrid, 1)
         line = sprintf('%s %s leaf=(%6.0f,%7.0f) d2=%8.2f/%8.2f', line, tag, L.river.x1, L.river.z1, d2, gate2);
     end
     fprintf('%s | WINNER dir=(% .4f,% .4f) |L|=%.4f\n', line, dx, dz, hypot(dx, dz));
+    if isnan(bx) || isnan(bz)
+        fprintf('CHECK | junction (%5d,%5d) | BLEND NO RIVER\n', x, z);
+    else
+        fprintf('CHECK | junction (%5d,%5d) | BLEND dir=(% .4f,% .4f) |L|=%.4f\n', ...
+            x, z, bx, bz, hypot(bx, bz));
+    end
 end
 % (b) normal-strip sweeps: best covered point of each section (on the path)
 sweeps = { 'main t=0.05', 2850.1, -7168.9,  0.9089, 0.4171; ...
@@ -159,14 +169,27 @@ for i = 1:size(sweeps, 1)
     else
         fprintf('CHECK | %-12s | path near (%5d,%5d) leaf=(%6.0f,%7.0f) d2=%9.2f | dir=(% .4f,% .4f) |L|=%.4f\n', ...
             sname, best(1), best(2), best(5), best(6), bestD2, best(3), best(4), hypot(best(3), best(4)));
+        [bx, bz] = flowConnectorBlend(networks, best(1), best(2), 1.0, checkCache);
+        if isnan(bx) || isnan(bz)
+            fprintf('CHECK | %-12s | BLEND NO RIVER\n', sname);
+        else
+            fprintf('CHECK | %-12s | BLEND dir=(% .4f,% .4f) |L|=%.4f\n', ...
+                sname, bx, bz, hypot(bx, bz));
+        end
     end
 end
 % (c) far point: no river within hundreds of blocks -> NO RIVER (expected)
 [dx, dz] = flowConnectorWinner(networks, 3000, -3000, 1.0, checkCache);
+[bx, bz] = flowConnectorBlend(networks, 3000, -3000, 1.0, checkCache);
 if isnan(dx) || isnan(dz)
     fprintf('CHECK | far/no river (3000,-3000) | NO RIVER (expected)\n');
 else
     fprintf('CHECK | far/no river (3000,-3000) | UNEXPECTED RIVER dir=(% .4f,% .4f)\n', dx, dz);
+end
+if isnan(bx) || isnan(bz)
+    fprintf('CHECK | far/no river (3000,-3000) | BLEND NO RIVER (expected)\n');
+else
+    fprintf('CHECK | far/no river (3000,-3000) | BLEND UNEXPECTED RIVER dir=(% .4f,% .4f)\n', bx, bz);
 end
 
 %% River building functions
@@ -583,6 +606,50 @@ function [dx, dz] = flowConnectorWinner(networks, x, z, mouthModifier, candCache
         dx = NaN; dz = NaN; return;
     end
     [dx, dz] = chainDirAt(cands{bestC}, x, z, 1.0);
+end
+
+function [dx, dz] = flowConnectorBlend(networks, x, z, mouthModifier, candCache)
+    % A3 - BLEND variant (this file only): identical admission (A1) and
+    % per-block evaluation (A2), but the direction is the WEIGHTED AVERAGE over
+    % ALL covering candidates: each candidate's own unit direction (its own
+    % chain, its own 4 signed-distance gradient probes; zero-mag -> its own
+    % axis direction), weight s_i = max(0, 1 - d2_i/gate2_i)^2 (fades to zero
+    % at the band edge - no pops). Zero accumulated vector -> the winner's
+    % (minimum d2) axis direction. NaN/NaN when no candidate covers.
+    if nargin < 4 || isempty(mouthModifier), mouthModifier = 1.0; end
+    if nargin < 5, candCache = []; end
+    cands = candidateList(networks, x, z, mouthModifier, candCache);
+    bestIdx = -1; bestD2 = inf;
+    ax = 0; az = 0;
+    for i = 1:numel(cands)
+        chain = cands{i};
+        L = chain(end);
+        [fx, fz] = foldChainAt(chain, x, z);
+        w = (fx - L.river.x1)*L.river.normX + (fz - L.river.z1)*L.river.normZ;
+        l = (fx - L.river.x1)*L.river.ndx   + (fz - L.river.z1)*L.river.ndz;
+        lOver = l - min(max(l, 0), L.river.length);
+        d2 = w*w + lOver*lOver;
+        scaledBW2 = scaledSize2(l / L.river.length, L, L.banksWidth^2, 1.25^2);   % UNclamped t
+        gate2 = min(scaledBW2 / mouthModifier, L.valleyWidth^2);
+        if d2 <= gate2
+            [udx, udz] = chainDirAt(chain, x, z, 1.0);
+            s = max(0, 1 - d2/gate2)^2;
+            ax = ax + s*udx; az = az + s*udz;
+            if d2 < bestD2
+                bestD2 = d2; bestIdx = i;
+            end
+        end
+    end
+    if bestIdx < 1
+        dx = NaN; dz = NaN; return;
+    end
+    mag = sqrt(ax*ax + az*az);
+    if mag <= 1e-12
+        L = cands{bestIdx}(end);
+        dx = L.river.ndx; dz = L.river.ndz;        % zero acc -> winner axis direction
+    else
+        dx = ax/mag; dz = az/mag;
+    end
 end
 
 function probeFlowChunked(networks, step, flowFunc, color, arrowLen, mouthModifier)
