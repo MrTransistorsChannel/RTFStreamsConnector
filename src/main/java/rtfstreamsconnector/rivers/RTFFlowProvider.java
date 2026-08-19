@@ -140,12 +140,9 @@ public class RTFFlowProvider {
             River river = network.riverCarver().river;
             RiverWarp warp = network.riverCarver().warp;
             float t = Line.distanceOnLine(warpedX, warpedZ, river.x1, river.z1, river.x2, river.z2);
-            // Like RTF's Network.carve: only apply the offset while the projection lands inside the axis (t in [0,1])
-            if (warp.test(t)) {
-                long packedOffset = warp.getOffset(warpedX, warpedZ, t, river);
-                warpedX += PosUtil.unpackLeftf(packedOffset);
-                warpedZ += PosUtil.unpackRightf(packedOffset);
-            }
+            long packedOffset = warp.getOffset(warpedX, warpedZ, t, river);
+            warpedX += PosUtil.unpackLeftf(packedOffset);
+            warpedZ += PosUtil.unpackRightf(packedOffset);
         }
         return PosUtil.packf(warpedX, warpedZ);
     }

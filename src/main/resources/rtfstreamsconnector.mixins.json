@@ -4,7 +4,8 @@
   "package": "rtfstreamsconnector.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "RiverFlowFieldsMixin"
+    "RiverFlowFieldsMixin",
+    "StreamFlowGridMixin"
   ],
   "injectors": {
     "defaultRequire": 1
